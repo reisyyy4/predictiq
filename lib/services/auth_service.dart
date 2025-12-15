@@ -1,19 +1,20 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
-  // Keys untuk SharedPreferences
+  final SupabaseClient _supabase = Supabase.instance.client;
+
   static const String _keyIsLoggedIn = 'isLoggedIn';
   static const String _keyEmail = 'userEmail';
   static const String _keyName = 'userName';
-  static const String _keyUsersData = 'usersData';
 
-  // Check apakah user sudah login
+  // Cek Status Login
   Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_keyIsLoggedIn) ?? false;
   }
 
-  // Get user info
+  // Ambil Data User (dari Cache HP)
   Future<Map<String, String>> getUserInfo() async {
     final prefs = await SharedPreferences.getInstance();
     return {
@@ -22,55 +23,91 @@ class AuthService {
     };
   }
 
-  // Register user baru
+  // --- REGISTRASI ---
   Future<bool> register({
     required String name,
     required String email,
     required String password,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    // Simulasi validasi email sudah terdaftar
-    final existingUsers = prefs.getStringList(_keyUsersData) ?? [];
-    if (existingUsers.any((user) => user.contains(email))) {
-      return false; // Email sudah terdaftar
-    }
+    try {
+      // 1. Daftar ke Supabase Auth (Sistem Keamanan)
+      final AuthResponse res = await _supabase.auth.signUp(
+        email: email,
+        password: password,
+      );
 
-    // Simpan user baru (format: "email|password|name")
-    existingUsers.add('$email|$password|$name');
-    await prefs.setStringList(_keyUsersData, existingUsers);
-    
-    return true;
+      // 2. Simpan Biodata ke Tabel Manual 'users'
+      if (res.user != null) {
+        try {
+           await _supabase.from('users').insert({
+             'id': res.user!.id,  // ID dari Auth
+             'nama': name,        // <--- Sesuai kolom database Anda ('nama')
+             'email': email,
+             // Note: Password tidak perlu disimpan di sini demi keamanan
+           });
+        } catch (e) {
+          print("Error simpan ke tabel users: $e");
+        }
+        return true; 
+      }
+      return false;
+    } catch (e) {
+      print("Register Error: $e");
+      return false;
+    }
   }
 
-  // Login
+  // --- LOGIN ---
   Future<bool> login({
     required String email,
     required String password,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    
-    // Ambil data users
-    final existingUsers = prefs.getStringList(_keyUsersData) ?? [];
-    
-    // Cari user yang cocok
-    for (var userData in existingUsers) {
-      final parts = userData.split('|');
-      if (parts[0] == email && parts[1] == password) {
-        // Login berhasil, simpan session
+
+    try {
+      // 1. Cek Password ke Supabase Auth
+      final AuthResponse res = await _supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+
+      // 2. Jika Password Benar (Login Sukses)
+      if (res.session != null) {
+        String userName = 'User';
+
+        try {
+          // Ambil nama dari tabel 'users'
+          final data = await _supabase
+              .from('users')         // <--- Nama Tabel: users
+              .select('nama')        // <--- Nama Kolom: nama (JANGAN 'name')
+              .eq('id', res.user!.id)
+              .single();
+          
+          userName = data['nama'];   // <--- Ambil datanya juga pakai 'nama'
+          
+        } catch (e) {
+          print("Gagal ambil nama: $e");
+        }
+
+        // 3. Simpan ke HP (SharedPreferences)
         await prefs.setBool(_keyIsLoggedIn, true);
         await prefs.setString(_keyEmail, email);
-        await prefs.setString(_keyName, parts[2]);
+        await prefs.setString(_keyName, userName);
+        
         return true;
       }
+      
+      return false;
+    } catch (e) {
+      print("Login Gagal: $e");
+      return false;
     }
-    
-    return false; // Login gagal
   }
 
   // Logout
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
+    await _supabase.auth.signOut();
     await prefs.setBool(_keyIsLoggedIn, false);
     await prefs.remove(_keyEmail);
     await prefs.remove(_keyName);

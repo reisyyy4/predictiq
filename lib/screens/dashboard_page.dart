@@ -18,7 +18,7 @@ class DashboardPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Halo, UMKM Kopi Senja 👋",
+            const Text("Halo, UMKM Produk Kecantikan 👋",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 5),
             Text("Berikut performa bisnis Anda hari ini.",
@@ -86,7 +86,7 @@ class DashboardPage extends StatelessWidget {
             _buildInsightCard(
               icon: Icons.trending_up,
               color: Colors.green,
-              title: "Stok Kopi Arabika Menipis",
+              title: "Stok Eyeshadow Palette with Mirror Menipis",
               description:
                   "Prediksi menunjukkan permintaan naik 20% minggu depan. Segera restock.",
             ),

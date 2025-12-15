@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../navigation_menu.dart';
-import 'login_page.dart';
+import 'login_page.dart'; // Pastikan path import ini benar
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -20,9 +20,10 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkLoginStatus() async {
-    // Delay 2 detik untuk splash screen
+    // Delay 2 detik untuk estetika splash screen
     await Future.delayed(const Duration(seconds: 2));
 
+    // Cek ke Supabase (via AuthService)
     final isLoggedIn = await _authService.isLoggedIn();
 
     if (mounted) {
@@ -46,13 +47,13 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // TAMPILAN TIDAK DIUBAH SAMA SEKALI
     return Scaffold(
       backgroundColor: Colors.teal,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Logo atau Icon
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
