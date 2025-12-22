@@ -253,6 +253,12 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       itemCount: _products.length,
       itemBuilder: (context, index) {
         final product = _products[index];
+        final int stock = product['stock'] ?? 0; // Ambil data stok
+
+        // Logika Warna: Jika stok < 20 jadi MERAH, jika aman jadi ABU-ABU
+        final bool isLowStock = stock < 20;
+        final Color stockColor = isLowStock ? Colors.red : Colors.grey[600]!;
+
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: ListTile(
@@ -293,10 +299,30 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                     fontSize: 16,
                   ),
                 ),
-                Text(
-                  'Stock: ${product['stock']}',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+
+                // --- UPDATE TAMPILAN STOK DI SINI ---
+                Container(
+                  padding: isLowStock
+                      ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
+                      : EdgeInsets.zero,
+                  decoration: isLowStock
+                      ? BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        )
+                      : null,
+                  child: Text(
+                    'Stock: $stock',
+                    style: TextStyle(
+                      color: stockColor, // Warna berubah sesuai jumlah
+                      fontSize: 12,
+                      fontWeight: isLowStock
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
                 ),
+                // ------------------------------------
               ],
             ),
             onTap: () => _showProductDetail(product),
