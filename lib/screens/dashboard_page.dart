@@ -1,8 +1,83 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/api_services.dart';
 
-class DashboardPage extends StatelessWidget {
+class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
+
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  final ApiService _apiService = ApiService();
+  final SupabaseClient _supabase = Supabase.instance.client;
+
+  bool _isLoading = true;
+  String _userName = "User";
+  double _totalSales = 0;
+  double _predictedSales = 0;
+  List<FlSpot> _chartData = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchDashboardData();
+  }
+
+  Future<void> _fetchDashboardData() async {
+    setState(() => _isLoading = true);
+    try {
+      // 1. Ambil Data User yang sedang Login
+      final user = _supabase.auth.currentUser;
+      if (user != null) {
+        // Ambil nama dari tabel 'users' berdasarkan ID Auth
+        final userData = await _supabase
+            .from('users')
+            .select('nama') // Pastikan kolomnya 'nama' sesuai database Anda
+            .eq('id', user.id)
+            .single();
+        _userName = userData['nama'] ?? "Pelanggan";
+      }
+
+      // 2. Ambil Data Transaksi (Carts)
+      final carts = await _apiService.getCarts();
+
+      // 3. Hitung Total Penjualan
+      double total = 0;
+      List<FlSpot> tempSpots = [];
+      
+      // Mengambil 5 transaksi terakhir untuk grafik
+      int index = 0;
+      for (var cart in carts.take(5)) {
+        double cartTotal = (cart['total'] ?? 0).toDouble();
+        total += cartTotal;
+        
+        // Membuat titik grafik (X: index, Y: total belanja dibagi 1000 biar grafik rapi)
+        tempSpots.add(FlSpot(index.toDouble(), cartTotal / 100)); 
+        index++;
+      }
+
+      // 4. Hitung Prediksi Sederhana (Misal: +15% dari total sekarang)
+      double prediction = total * 1.15;
+
+      setState(() {
+        _totalSales = total;
+        _predictedSales = prediction;
+        _userName = _userName;
+        // Jika data kosong, kasih grafik dummy biar ga crash
+        _chartData = tempSpots.isNotEmpty 
+            ? tempSpots 
+            : [const FlSpot(0, 0), const FlSpot(1, 1), const FlSpot(2, 0.5)];
+        _isLoading = false;
+      });
+
+    } catch (e) {
+      debugPrint("Error loading dashboard: $e");
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,94 +87,107 @@ class DashboardPage extends StatelessWidget {
             style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 0,
+        actions: [
+           IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.black),
+            onPressed: _fetchDashboardData,
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Halo, UMKM Produk Kecantikan 👋",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 5),
-            Text("Berikut performa bisnis Anda hari ini.",
-                style: TextStyle(color: Colors.grey[600])),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                    child: _buildMetricCard(
-                        "Total Penjualan", "Rp 12.5Jt", Colors.blue)),
-                const SizedBox(width: 12),
-                Expanded(
-                    child: _buildMetricCard(
-                        "Prediksi Besok", "Rp 14.2Jt", Colors.green)),
-              ],
-            ),
-            const SizedBox(height: 24),
-            const Text("Tren & Prediksi Penjualan",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Container(
-              height: 200,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                  color: Colors.white, borderRadius: BorderRadius.circular(12)),
-              child: LineChart(
-                LineChartData(
-                  gridData: const FlGridData(show: false),
-                  titlesData: const FlTitlesData(show: false),
-                  borderData: FlBorderData(show: false),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: const [
-                        FlSpot(0, 3),
-                        FlSpot(1, 4),
-                        FlSpot(2, 3.5),
-                        FlSpot(3, 5),
-                        FlSpot(4, 4.8)
-                      ],
-                      isCurved: true,
-                      color: Colors.blue,
-                      barWidth: 3,
-                      dotData: const FlDotData(show: false),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Sapaan User Dinamis
+                  Text("Halo, $_userName 👋",
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 5),
+                  Text("Berikut performa bisnis Anda hari ini.",
+                      style: TextStyle(color: Colors.grey[600])),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Kartu Metrik Dinamis
+                  Row(
+                    children: [
+                      Expanded(
+                          child: _buildMetricCard(
+                              "Total Penjualan", 
+                              "\$${_totalSales.toStringAsFixed(0)}", // Format mata uang
+                              Colors.blue)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          child: _buildMetricCard(
+                              "Prediksi Besok", 
+                              "\$${_predictedSales.toStringAsFixed(0)}", 
+                              Colors.green)),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  const Text("Tren Penjualan (5 Transaksi Terakhir)",
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  
+                  // Grafik Dinamis
+                  Container(
+                    height: 200,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12)),
+                    child: LineChart(
+                      LineChartData(
+                        gridData: const FlGridData(show: false),
+                        titlesData: const FlTitlesData(show: false),
+                        borderData: FlBorderData(show: false),
+                        lineBarsData: [
+                          LineChartBarData(
+                            spots: _chartData, // Data asli dari database
+                            isCurved: true,
+                            color: Colors.blue,
+                            barWidth: 3,
+                            dotData: const FlDotData(show: true),
+                            belowBarData: BarAreaData(
+                              show: true,
+                              color: Colors.blue.withOpacity(0.1),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    LineChartBarData(
-                      spots: const [
-                        FlSpot(4, 4.8),
-                        FlSpot(5, 6),
-                        FlSpot(6, 6.5)
-                      ],
-                      isCurved: true,
-                      color: Colors.green,
-                      barWidth: 3,
-                      dashArray: [5, 5],
-                      dotData: const FlDotData(show: false),
-                    ),
-                  ],
-                ),
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  const Text("Rekomendasi Cerdas (AI)",
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  
+                  // Bagian ini masih statis (karena butuh Logic AI yang lebih kompleks)
+                  // Tapi bisa kita biarkan sebagai Mockup fitur masa depan
+                  _buildInsightCard(
+                    icon: Icons.trending_up,
+                    color: Colors.green,
+                    title: "Permintaan Produk Meningkat",
+                    description:
+                        "Data menunjukkan kenaikan penjualan $_userName minggu ini.",
+                  ),
+                  _buildInsightCard(
+                    icon: Icons.warning_amber_rounded,
+                    color: Colors.orange,
+                    title: "Cek Stok Barang",
+                    description:
+                        "Beberapa transaksi terakhir memiliki volume tinggi.",
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 24),
-            const Text("Rekomendasi Cerdas (AI)",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            _buildInsightCard(
-              icon: Icons.trending_up,
-              color: Colors.green,
-              title: "Stok Eyeshadow Palette with Mirror Menipis",
-              description:
-                  "Prediksi menunjukkan permintaan naik 20% minggu depan. Segera restock.",
-            ),
-            _buildInsightCard(
-              icon: Icons.warning_amber_rounded,
-              color: Colors.orange,
-              title: "Pelanggan Pasif",
-              description:
-                  "5 pelanggan loyal Anda belum belanja bulan ini. Kirim promo menarik.",
-            ),
-          ],
-        ),
-      ),
     );
   }
 

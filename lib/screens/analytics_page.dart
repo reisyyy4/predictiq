@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import '../services/api_services.dart';  
+import 'package:supabase_flutter/supabase_flutter.dart'; // Tambahan Import
+import '../services/api_services.dart';
 
 class AnalyticsPage extends StatefulWidget {
   const AnalyticsPage({super.key});
@@ -11,6 +11,9 @@ class AnalyticsPage extends StatefulWidget {
 
 class _AnalyticsPageState extends State<AnalyticsPage> {
   final ApiService _apiService = ApiService();
+  final SupabaseClient _supabase =
+      Supabase.instance.client; // Tambahan Client Supabase
+
   bool _isLoading = false;
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _carts = [];
@@ -34,8 +37,36 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  // --- TAMBAHAN: FUNGSI HAPUS TRANSAKSI ---
+  Future<void> _deleteTransaction(int cartId) async {
+    try {
+      // Hapus dari database Supabase
+      await _supabase.from('carts').delete().eq('id', cartId);
+
+      // Hapus dari tampilan lokal tanpa refresh loading
+      setState(() {
+        _carts.removeWhere((item) => item['id'] == cartId);
+      });
+
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          const SnackBar(content: Text('Transaksi berhasil dihapus')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal menghapus: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -57,10 +88,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         appBar: AppBar(
           title: const Text("Analisis Prediktif"),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _loadData,
-            ),
+            IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
           ],
           bottom: const TabBar(
             tabs: [
@@ -185,7 +213,9 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                 backgroundColor: Colors.grey[300],
               ),
               title: Text(product['title'] ?? 'Unknown'),
-              subtitle: Text('Stock: ${product['stock']} | \$${product['price']}'),
+              subtitle: Text(
+                'Stock: ${product['stock']} | \$${product['price']}',
+              ),
               trailing: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -195,7 +225,11 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.arrow_upward, color: Colors.green, size: 16),
+                    const Icon(
+                      Icons.arrow_upward,
+                      color: Colors.green,
+                      size: 16,
+                    ),
                     Text(
                       '${product['rating'] ?? 0}',
                       style: const TextStyle(
@@ -261,10 +295,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                 ),
                 Text(
                   'Stock: ${product['stock']}',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
                 ),
               ],
             ),
@@ -282,82 +313,180 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       itemBuilder: (context, index) {
         final cart = _carts[index];
         final products = cart['products'] as List<dynamic>? ?? [];
-        
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ExpansionTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.teal,
-              child: Text('#${cart['id']}'),
-            ),
-            title: Text('User ID: ${cart['userId']}'),
-            subtitle: Text(
-              'Total: \$${cart['total']} | ${products.length} items',
-            ),
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Detail Produk:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[700],
+
+        // Logic Perhitungan
+        final double originalPrice = (cart['total'] ?? 0).toDouble();
+        final double finalPrice = (cart['discountedTotal'] ?? 0).toDouble();
+        final double discountAmount = originalPrice - finalPrice;
+
+        // --- TAMBAHAN: DISMISSIBLE UNTUK SLIDE DELETE ---
+        return Dismissible(
+          key: Key(cart['id'].toString()), // Key unik wajib ada
+          direction: DismissDirection.endToStart, // Geser Kanan ke Kiri
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20.0),
+            color: Colors.red, // Warna latar saat digeser
+            child: const Icon(Icons.delete, color: Colors.white, size: 30),
+          ),
+          confirmDismiss: (direction) async {
+            // Dialog Konfirmasi sebelum hapus
+            return await showDialog(
+              context: context,
+              builder: (BuildContext context) {
+                return AlertDialog(
+                  title: const Text("Hapus Transaksi?"),
+                  content: const Text(
+                    "Data yang dihapus tidak dapat dikembalikan.",
+                  ),
+                  actions: <Widget>[
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text("Batal"),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text(
+                        "Hapus",
+                        style: TextStyle(color: Colors.red),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    ...products.map((product) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
+                  ],
+                );
+              },
+            );
+          },
+          onDismissed: (direction) {
+            // Panggil fungsi hapus
+            _deleteTransaction(cart['id']);
+          },
+          child: Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ExpansionTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.teal,
+                child: Text('#${cart['id']}'),
+              ),
+              title: Text('User ID: ${cart['userId']}'),
+              subtitle: Text(
+                'Total: \$${finalPrice.toStringAsFixed(1)} | ${products.length} items',
+              ),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Detail Produk:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      ...products.map((product) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Product ID: ${product['id']}',
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                              Text(
+                                '${product['quantity']}x @ \$${product['price']}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+
+                      const Divider(height: 24),
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Subtotal',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                          Text(
+                            '\$${originalPrice.toStringAsFixed(1)}',
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 4),
+
+                      if (discountAmount > 0.01)
+                        Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Expanded(
-                              child: Text(
-                                'Product ID: ${product['id']}',
-                                style: const TextStyle(fontSize: 14),
-                              ),
+                            const Text(
+                              'Diskon',
+                              style: TextStyle(color: Colors.green),
                             ),
                             Text(
-                              '${product['quantity']}x @ \$${product['price']}',
+                              '- \$${discountAmount.toStringAsFixed(1)}',
                               style: const TextStyle(
-                                fontWeight: FontWeight.w500,
+                                color: Colors.green,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ],
                         ),
-                      );
-                    }).toList(),
-                    const Divider(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Total Diskon:',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                        Text(
-                          '-\$${cart['discountedTotal']}',
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.bold,
+
+                      const Divider(height: 24),
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Total Bayar:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          Text(
+                            '\$${finalPrice.toStringAsFixed(1)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                              color: Colors.teal,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _buildMetricCard(String title, String value, Color color, IconData icon) {
+  Widget _buildMetricCard(
+    String title,
+    String value,
+    Color color,
+    IconData icon,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -370,13 +499,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         children: [
           Icon(icon, color: color, size: 24),
           const SizedBox(height: 8),
-          Text(
-            title,
-            style: TextStyle(
-              color: Colors.grey[700],
-              fontSize: 12,
-            ),
-          ),
+          Text(title, style: TextStyle(color: Colors.grey[700], fontSize: 12)),
           const SizedBox(height: 4),
           Text(
             value,
@@ -481,7 +604,11 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                           const Text('Rating', style: TextStyle(fontSize: 12)),
                           Row(
                             children: [
-                              const Icon(Icons.star, color: Colors.amber, size: 20),
+                              const Icon(
+                                Icons.star,
+                                color: Colors.amber,
+                                size: 20,
+                              ),
                               Text(
                                 ' ${product['rating']}',
                                 style: const TextStyle(
