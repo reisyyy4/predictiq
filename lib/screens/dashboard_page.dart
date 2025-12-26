@@ -47,15 +47,15 @@ class _DashboardPageState extends State<DashboardPage> {
       // 3. Hitung Total Penjualan
       double total = 0;
       List<FlSpot> tempSpots = [];
-      
+
       // Mengambil 5 transaksi terakhir untuk grafik
       int index = 0;
       for (var cart in carts.take(5)) {
         double cartTotal = (cart['total'] ?? 0).toDouble();
         total += cartTotal;
-        
+
         // Membuat titik grafik (X: index, Y: total belanja dibagi 1000 biar grafik rapi)
-        tempSpots.add(FlSpot(index.toDouble(), cartTotal / 100)); 
+        tempSpots.add(FlSpot(index.toDouble(), cartTotal / 100));
         index++;
       }
 
@@ -67,12 +67,11 @@ class _DashboardPageState extends State<DashboardPage> {
         _predictedSales = prediction;
         _userName = _userName;
         // Jika data kosong, kasih grafik dummy biar ga crash
-        _chartData = tempSpots.isNotEmpty 
-            ? tempSpots 
+        _chartData = tempSpots.isNotEmpty
+            ? tempSpots
             : [const FlSpot(0, 0), const FlSpot(1, 1), const FlSpot(2, 0.5)];
         _isLoading = false;
       });
-
     } catch (e) {
       debugPrint("Error loading dashboard: $e");
       setState(() => _isLoading = false);
@@ -83,12 +82,14 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("PredictIQ Dashboard",
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          "PredictIQ Dashboard",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
-           IconButton(
+          IconButton(
             icon: const Icon(Icons.refresh, color: Colors.black),
             onPressed: _fetchDashboardData,
           ),
@@ -102,45 +103,57 @@ class _DashboardPageState extends State<DashboardPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Sapaan User Dinamis
-                  Text("Halo, $_userName 👋",
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(
+                    "Halo, $_userName 👋",
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 5),
-                  Text("Berikut performa bisnis Anda hari ini.",
-                      style: TextStyle(color: Colors.grey[600])),
-                  
+                  Text(
+                    "Berikut performa bisnis Anda hari ini.",
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+
                   const SizedBox(height: 20),
-                  
+
                   // Kartu Metrik Dinamis
                   Row(
                     children: [
                       Expanded(
-                          child: _buildMetricCard(
-                              "Total Penjualan", 
-                              "\$${_totalSales.toStringAsFixed(0)}", // Format mata uang
-                              Colors.blue)),
+                        child: _buildMetricCard(
+                          "Total Penjualan",
+                          "\$${_totalSales.toStringAsFixed(0)}", // Format mata uang
+                          Colors.blue,
+                        ),
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
-                          child: _buildMetricCard(
-                              "Prediksi Besok", 
-                              "\$${_predictedSales.toStringAsFixed(0)}", 
-                              Colors.green)),
+                        child: _buildMetricCard(
+                          "Prediksi Besok",
+                          "\$${_predictedSales.toStringAsFixed(0)}",
+                          Colors.green,
+                        ),
+                      ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  const Text("Tren Penjualan (5 Transaksi Terakhir)",
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const Text(
+                    "Tren Penjualan (5 Transaksi Terakhir)",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 12),
-                  
+
                   // Grafik Dinamis
                   Container(
                     height: 200,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12)),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: LineChart(
                       LineChartData(
                         gridData: const FlGridData(show: false),
@@ -162,13 +175,14 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  const Text("Rekomendasi Cerdas (AI)",
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const Text(
+                    "Rekomendasi Cerdas (AI)",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 12),
-                  
+
                   // Bagian ini masih statis (karena butuh Logic AI yang lebih kompleks)
                   // Tapi bisa kita biarkan sebagai Mockup fitur masa depan
                   _buildInsightCard(
@@ -204,25 +218,32 @@ class _DashboardPageState extends State<DashboardPage> {
         children: [
           Text(title, style: TextStyle(color: Colors.grey[700], fontSize: 12)),
           const SizedBox(height: 8),
-          Text(value,
-              style: TextStyle(
-                  color: color, fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildInsightCard(
-      {required IconData icon,
-      required Color color,
-      required String title,
-      required String description}) {
+  Widget _buildInsightCard({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String description,
+  }) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade200)),
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Row(
@@ -231,8 +252,9 @@ class _DashboardPageState extends State<DashboardPage> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8)),
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Icon(icon, color: color),
             ),
             const SizedBox(width: 12),
@@ -240,12 +262,18 @@ class _DashboardPageState extends State<DashboardPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14)),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text(description,
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                  Text(
+                    description,
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
                 ],
               ),
             ),

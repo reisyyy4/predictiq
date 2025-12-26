@@ -10,7 +10,7 @@ class ProfilePage extends StatelessWidget {
   Future<void> _handleLogout(BuildContext context) async {
     final authService = AuthService();
     await authService.logout();
-    
+
     if (context.mounted) {
       Navigator.pushAndRemoveUntil(
         context,
@@ -32,10 +32,7 @@ class ProfilePage extends StatelessWidget {
             children: [
               const Text(
                 'QR Code Langganan',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               Container(
@@ -106,10 +103,7 @@ class ProfilePage extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Text(
-                  userEmail,
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
+                Text(userEmail, style: TextStyle(color: Colors.grey[600])),
                 const SizedBox(height: 24),
 
                 // Paket Berlangganan Card (dengan QR Code)

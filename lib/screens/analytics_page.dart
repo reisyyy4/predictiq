@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // Tambahan Import
-import '../services/api_services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/api_services.dart'; // Pastikan path ini sesuai
 
 class AnalyticsPage extends StatefulWidget {
   const AnalyticsPage({super.key});
@@ -11,8 +11,7 @@ class AnalyticsPage extends StatefulWidget {
 
 class _AnalyticsPageState extends State<AnalyticsPage> {
   final ApiService _apiService = ApiService();
-  final SupabaseClient _supabase =
-      Supabase.instance.client; // Tambahan Client Supabase
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   bool _isLoading = false;
   List<Map<String, dynamic>> _products = [];
@@ -24,6 +23,9 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     _loadData();
   }
 
+  // ==========================================
+  // 1. LOGIC LOAD DATA
+  // ==========================================
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
@@ -44,17 +46,23 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     }
   }
 
-  // --- TAMBAHAN: FUNGSI HAPUS TRANSAKSI ---
+  double _calculateTotalRevenue() {
+    double total = 0;
+    for (var cart in _carts) {
+      total += (cart['total'] ?? 0).toDouble();
+    }
+    return total;
+  }
+
+  // ==========================================
+  // 2. LOGIC TRANSAKSI (HAPUS)
+  // ==========================================
   Future<void> _deleteTransaction(int cartId) async {
     try {
-      // Hapus dari database Supabase
       await _supabase.from('carts').delete().eq('id', cartId);
-
-      // Hapus dari tampilan lokal tanpa refresh loading
       setState(() {
         _carts.removeWhere((item) => item['id'] == cartId);
       });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Transaksi berhasil dihapus')),
@@ -72,13 +80,197 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     }
   }
 
-  double _calculateTotalRevenue() {
-    double total = 0;
-    for (var cart in _carts) {
-      total += (cart['total'] ?? 0).toDouble();
+  // ==========================================
+  // 3. LOGIC PRODUK (EDIT & HAPUS ANTI-CRASH)
+  // ==========================================
+
+  Future<void> _deleteProduct(int productId) async {
+    // Dialog Konfirmasi
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus Produk?'),
+        content: const Text('Produk ini akan dihapus permanen.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await _supabase.from('products').delete().eq('id', productId);
+
+      setState(() {
+        _products.removeWhere((element) => element['id'] == productId);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Produk dihapus ✅')));
+      }
+    } catch (e) {
+      // --- PERBAIKAN UTAMA DI SINI ---
+      String errorMessage = 'Terjadi kesalahan: $e';
+
+      // Deteksi Error Foreign Key (Data masih dipakai di transaksi)
+      if (e is PostgrestException && e.code == '23503') {
+        errorMessage =
+            'Gagal: Produk ini pernah terjual! Hapus riwayat transaksinya dulu.';
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4), // Tampil lebih lama
+          ),
+        );
+      }
     }
-    return total;
   }
+
+  void _showEditProductDialog(Map<String, dynamic> product) {
+    final titleCtrl = TextEditingController(text: product['title']);
+    final categoryCtrl = TextEditingController(text: product['category']);
+    final priceCtrl = TextEditingController(text: product['price'].toString());
+    final stockCtrl = TextEditingController(text: product['stock'].toString());
+    final imgCtrl = TextEditingController(text: product['thumbnail']);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        bool isUpdating = false;
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Edit Produk'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: titleCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Nama Produk',
+                      ),
+                    ),
+                    TextField(
+                      controller: categoryCtrl,
+                      decoration: const InputDecoration(labelText: 'Kategori'),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: priceCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Harga',
+                            ),
+                            keyboardType: TextInputType.number,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: stockCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Stok',
+                            ),
+                            keyboardType: TextInputType.number,
+                          ),
+                        ),
+                      ],
+                    ),
+                    TextField(
+                      controller: imgCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'URL Gambar',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  onPressed: isUpdating
+                      ? null
+                      : () async {
+                          setStateDialog(() => isUpdating = true);
+                          try {
+                            final updatedData = {
+                              'title': titleCtrl.text,
+                              'category': categoryCtrl.text,
+                              'price': double.tryParse(priceCtrl.text) ?? 0,
+                              'stock': int.tryParse(stockCtrl.text) ?? 0,
+                              'thumbnail': imgCtrl.text,
+                            };
+
+                            await _supabase
+                                .from('products')
+                                .update(updatedData)
+                                .eq('id', product['id']);
+
+                            setState(() {
+                              final index = _products.indexWhere(
+                                (element) => element['id'] == product['id'],
+                              );
+                              if (index != -1) {
+                                _products[index] = {
+                                  ..._products[index],
+                                  ...updatedData,
+                                };
+                              }
+                            });
+
+                            if (mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Produk diupdate!'),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            setStateDialog(() => isUpdating = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: $e')),
+                            );
+                          }
+                        },
+                  child: isUpdating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Simpan'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // 4. UI BUILDER
+  // ==========================================
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +284,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
           ],
           bottom: const TabBar(
             tabs: [
-              Tab(text: "Prediksi Penjualan"),
+              Tab(text: "Prediksi"),
               Tab(text: "Data Produk"),
               Tab(text: "Transaksi"),
             ],
@@ -111,6 +303,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     );
   }
 
+  // --- TAB 1: PREDIKSI ---
   Widget _buildPredictionTab() {
     final totalRevenue = _calculateTotalRevenue();
     final avgPerTransaction = _carts.isEmpty ? 0 : totalRevenue / _carts.length;
@@ -118,7 +311,6 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Summary Cards
         Row(
           children: [
             Expanded(
@@ -163,7 +355,6 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
           ],
         ),
         const SizedBox(height: 24),
-
         const Text(
           "Proyeksi 30 Hari Kedepan",
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
@@ -198,9 +389,8 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
           ),
         ),
         const SizedBox(height: 24),
-
         const Text(
-          "Produk Paling Berpotensi Laris:",
+          "Produk Berpotensi Laris:",
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         const SizedBox(height: 12),
@@ -216,52 +406,35 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
               subtitle: Text(
                 'Stock: ${product['stock']} | \$${product['price']}',
               ),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.arrow_upward,
-                      color: Colors.green,
-                      size: 16,
-                    ),
-                    Text(
-                      '${product['rating'] ?? 0}',
-                      style: const TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
+              trailing: const Icon(
+                Icons.arrow_upward,
+                color: Colors.green,
+                size: 16,
               ),
             ),
           );
-        }).toList(),
+        }),
       ],
     );
   }
 
+  // --- TAB 2: DATA PRODUK (DENGAN EDIT & HAPUS) ---
   Widget _buildProductsTab() {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: _products.length,
       itemBuilder: (context, index) {
         final product = _products[index];
-        final int stock = product['stock'] ?? 0; // Ambil data stok
-
-        // Logika Warna: Jika stok < 20 jadi MERAH, jika aman jadi ABU-ABU
+        final int stock = product['stock'] ?? 0;
         final bool isLowStock = stock < 20;
-        final Color stockColor = isLowStock ? Colors.red : Colors.grey[600]!;
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
             leading: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.network(
@@ -269,38 +442,28 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                 width: 60,
                 height: 60,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 60,
-                    height: 60,
-                    color: Colors.grey[300],
-                    child: const Icon(Icons.image_not_supported),
-                  );
-                },
+                errorBuilder: (c, e, s) => Container(
+                  width: 60,
+                  height: 60,
+                  color: Colors.grey[300],
+                  child: const Icon(Icons.image_not_supported),
+                ),
               ),
             ),
             title: Text(
               product['title'] ?? 'Unknown',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            subtitle: Text(
-              product['category'] ?? 'N/A',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
-            ),
-            trailing: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '\$${product['price']}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
+                  product['category'] ?? 'N/A',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
                 ),
-
-                // --- UPDATE TAMPILAN STOK DI SINI ---
+                const SizedBox(height: 4),
                 Container(
                   padding: isLowStock
                       ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
@@ -314,7 +477,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                   child: Text(
                     'Stock: $stock',
                     style: TextStyle(
-                      color: stockColor, // Warna berubah sesuai jumlah
+                      color: isLowStock ? Colors.red : Colors.grey[600],
                       fontSize: 12,
                       fontWeight: isLowStock
                           ? FontWeight.bold
@@ -322,7 +485,48 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                     ),
                   ),
                 ),
-                // ------------------------------------
+              ],
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '\$${product['price']}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.teal,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'edit') _showEditProductDialog(product);
+                    if (value == 'delete') _deleteProduct(product['id']);
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit, color: Colors.blue),
+                          SizedBox(width: 8),
+                          Text('Edit'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete, color: Colors.red),
+                          SizedBox(width: 8),
+                          Text('Hapus'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
             onTap: () => _showProductDetail(product),
@@ -332,6 +536,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     );
   }
 
+  // --- TAB 3: TRANSAKSI (DENGAN SLIDE HAPUS) ---
   Widget _buildTransactionsTab() {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -339,53 +544,40 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       itemBuilder: (context, index) {
         final cart = _carts[index];
         final products = cart['products'] as List<dynamic>? ?? [];
-
-        // Logic Perhitungan
-        final double originalPrice = (cart['total'] ?? 0).toDouble();
         final double finalPrice = (cart['discountedTotal'] ?? 0).toDouble();
-        final double discountAmount = originalPrice - finalPrice;
 
-        // --- TAMBAHAN: DISMISSIBLE UNTUK SLIDE DELETE ---
         return Dismissible(
-          key: Key(cart['id'].toString()), // Key unik wajib ada
-          direction: DismissDirection.endToStart, // Geser Kanan ke Kiri
+          key: Key(cart['id'].toString()),
+          direction: DismissDirection.endToStart,
           background: Container(
             alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 20.0),
-            color: Colors.red, // Warna latar saat digeser
-            child: const Icon(Icons.delete, color: Colors.white, size: 30),
+            padding: const EdgeInsets.only(right: 20),
+            color: Colors.red,
+            child: const Icon(Icons.delete, color: Colors.white),
           ),
           confirmDismiss: (direction) async {
-            // Dialog Konfirmasi sebelum hapus
             return await showDialog(
               context: context,
-              builder: (BuildContext context) {
-                return AlertDialog(
-                  title: const Text("Hapus Transaksi?"),
-                  content: const Text(
-                    "Data yang dihapus tidak dapat dikembalikan.",
+              builder: (context) => AlertDialog(
+                title: const Text("Hapus Transaksi?"),
+                content: const Text("Data tidak bisa kembali."),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text("Batal"),
                   ),
-                  actions: <Widget>[
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text("Batal"),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text(
+                      "Hapus",
+                      style: TextStyle(color: Colors.red),
                     ),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      child: const Text(
-                        "Hapus",
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ),
-                  ],
-                );
-              },
+                  ),
+                ],
+              ),
             );
           },
-          onDismissed: (direction) {
-            // Panggil fungsi hapus
-            _deleteTransaction(cart['id']);
-          },
+          onDismissed: (direction) => _deleteTransaction(cart['id']),
           child: Card(
             margin: const EdgeInsets.only(bottom: 12),
             child: ExpansionTile(
@@ -403,98 +595,39 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'Detail Produk:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[700],
-                        ),
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
-
-                      ...products.map((product) {
-                        return Padding(
+                      ...products.map(
+                        (p) => Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Expanded(
-                                child: Text(
-                                  'Product ID: ${product['id']}',
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              ),
+                              Expanded(child: Text('Product ID: ${p['id']}')),
                               Text(
-                                '${product['quantity']}x @ \$${product['price']}',
+                                '${p['quantity']}x @ \$${p['price']}',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],
                           ),
-                        );
-                      }).toList(),
-
-                      const Divider(height: 24),
-
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Subtotal',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                          Text(
-                            '\$${originalPrice.toStringAsFixed(1)}',
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              decoration: TextDecoration.lineThrough,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 4),
-
-                      if (discountAmount > 0.01)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Diskon',
-                              style: TextStyle(color: Colors.green),
-                            ),
-                            Text(
-                              '- \$${discountAmount.toStringAsFixed(1)}',
-                              style: const TextStyle(
-                                color: Colors.green,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
                         ),
-
-                      const Divider(height: 24),
-
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Total Bayar:',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
+                      ),
+                      const Divider(),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          'Total Bayar: \$${finalPrice.toStringAsFixed(1)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.teal,
                           ),
-                          Text(
-                            '\$${finalPrice.toStringAsFixed(1)}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                              color: Colors.teal,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
@@ -507,6 +640,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     );
   }
 
+  // --- WIDGET HELPER ---
   Widget _buildMetricCard(
     String title,
     String value,
@@ -600,7 +734,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Price', style: TextStyle(fontSize: 12)),
+                          const Text('Price'),
                           Text(
                             '\$${product['price']}',
                             style: const TextStyle(
@@ -614,35 +748,13 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Text('Stock', style: TextStyle(fontSize: 12)),
+                          const Text('Stock'),
                           Text(
                             '${product['stock']}',
                             style: const TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
                             ),
-                          ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          const Text('Rating', style: TextStyle(fontSize: 12)),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.star,
-                                color: Colors.amber,
-                                size: 20,
-                              ),
-                              Text(
-                                ' ${product['rating']}',
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
                           ),
                         ],
                       ),
